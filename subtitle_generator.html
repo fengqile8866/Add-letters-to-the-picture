@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片字幕生成器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .controls label {
+            margin-right: 10px;
+        }
+        .controls input {
+            margin-right: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            margin-bottom: 20px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .buttons button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .buttons button:hover {
+            background-color: #45a049;
+        }
+        .preview-container {
+            margin-top: 30px;
+            text-align: center;
+        }
+        #preview {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+        .color-input {
+            width: 80px;
+            height: 30px;
+            padding: 0;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>图片字幕生成器</h1>
+    
+    <div class="controls">
+        <input type="file" id="imageInput" accept="image/*">
+        <span id="fileName"></span>
+    </div>
+    
+    <div class="controls">
+        <label for="subtitleHeight">字幕高度(px):</label>
+        <input type="number" id="subtitleHeight" value="40" min="10" max="100">
+        
+        <label for="fontSize">字体大小(px):</label>
+        <input type="number" id="fontSize" value="20" min="10" max="50">
+        
+        <label for="fontColor">字体颜色:</label>
+        <input type="color" id="fontColor" value="#FFFFFF" class="color-input">
+        
+        <label for="strokeColor">轮廓颜色:</label>
+        <input type="color" id="strokeColor" value="#000000" class="color-input">
+    </div>
+    
+    <div class="controls">
+        <h3>水印设置</h3>
+        <label for="watermarkText">水印文本:</label>
+        <input type="text" id="watermarkText" value="" placeholder="输入水印文字">
+        
+        <label for="watermarkSize">字体大小(px):</label>
+        <input type="number" id="watermarkSize" value="20" min="10" max="100">
+        
+        <label for="watermarkColor">颜色:</label>
+        <input type="color" id="watermarkColor" value="#000000" class="color-input">
+        
+        <label for="watermarkOpacity">透明度:</label>
+        <input type="range" id="watermarkOpacity" value="30" min="10" max="100">
+        
+        <label for="watermarkPosition">位置:</label>
+        <select id="watermarkPosition">
+            <option value="topLeft">左上角</option>
+            <option value="topRight">右上角</option>
+            <option value="bottomLeft">左下角</option>
+            <option value="bottomRight">右下角</option>
+            <option value="center" selected>居中</option>
+            <option value="fullScreen">满屏</option>
+        </select>
+    </div>
+    
+    <textarea id="subtitleText" placeholder="在这里输入字幕文本，每行将作为一个独立的字幕"></textarea>
+    
+    <div class="buttons">
+        <button id="generateBtn">生成字幕图片</button>
+        <button id="saveBtn">保存图片</button>
+    </div>
+    
+    <div class="preview-container">
+        <canvas id="canvas" style="display: none;"></canvas>
+        <img id="preview" style="display: none;">
+    </div>
+
+    <script>
+        // 获取DOM元素
+        const imageInput = document.getElementById('imageInput');
+        const fileName = document.getElementById('fileName');
+        const subtitleHeight = document.getElementById('subtitleHeight');
+        const fontSize = document.getElementById('fontSize');
+        const fontColor = document.getElementById('fontColor');
+        const strokeColor = document.getElementById('strokeColor');
+        const subtitleText = document.getElementById('subtitleText');
+        const generateBtn = document.getElementById('generateBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const preview = document.getElementById('preview');
+        
+        // 获取水印相关DOM元素
+        const watermarkText = document.getElementById('watermarkText');
+        const watermarkSize = document.getElementById('watermarkSize');
+        const watermarkColor = document.getElementById('watermarkColor');
+        const watermarkOpacity = document.getElementById('watermarkOpacity');
+        const watermarkPosition = document.getElementById('watermarkPosition');
+        
+        // 存储上传的图片
+        let uploadedImage = null;
+        
+        // 监听文件上传
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                fileName.textContent = file.name;
+                
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    uploadedImage = new Image();
+                    uploadedImage.onload = function() {
+                        // 图片加载完成后可以预览原图
+                        canvas.width = uploadedImage.width;
+                        canvas.height = uploadedImage.height;
+                        ctx.drawImage(uploadedImage, 0, 0);
+                        preview.src = canvas.toDataURL('image/png');
+                        preview.style.display = 'block';
+                    };
+                    uploadedImage.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // 生成字幕图片
+        generateBtn.addEventListener('click', function() {
+            if (!uploadedImage) {
+                alert('请先上传图片');
+                return;
+            }
+            
+            const lines = subtitleText.value.split('\n').filter(line => line.trim() !== '');
+            if (lines.length === 0) {
+                alert('请输入字幕文本');
+                return;
+            }
+            
+            // 设置画布尺寸为原图尺寸
+            canvas.width = uploadedImage.width;
+            canvas.height = uploadedImage.height;
+            
+            // 绘制原图
+            ctx.drawImage(uploadedImage, 0, 0);
+            
+            // 获取参数
+            const height = parseInt(subtitleHeight.value);
+            const fSize = parseInt(fontSize.value);
+            const fColor = fontColor.value;
+            const sColor = strokeColor.value;
+            
+            // 计算字幕区域的总高度
+            const totalSubtitleHeight = height * lines.length;
+            
+            // 计算字幕区域的起始Y坐标（底部对齐）
+            const startY = canvas.height - totalSubtitleHeight;
+            
+            // 创建一个临时画布来存储第一行字幕高度的图片部分
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // 从原图中截取第一行字幕所在高度的图片部分
+            tempCtx.drawImage(uploadedImage, 0, startY, canvas.width, height, 0, 0, canvas.width, height);
+            
+            // 绘制每行字幕及其背景
+            for (let i = 0; i < lines.length; i++) {
+                const y = startY + i * height;
+                
+                // 绘制相同的背景图片
+                ctx.drawImage(tempCanvas, 0, 0, canvas.width, height, 0, y, canvas.width, height);
+                
+                // 绘制半透明背景色块
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, y, canvas.width, height);
+                
+                // 如果不是第一行，绘制分割线
+                if (i > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    ctx.strokeStyle = '#FFFFFF';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+                
+                // 绘制文字
+                ctx.fillStyle = fColor;
+                ctx.font = `${fSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                // 如果设置了轮廓颜色
+                if (sColor) {
+                    ctx.strokeStyle = sColor;
+                    ctx.lineWidth = 2;
+                    ctx.strokeText(lines[i], canvas.width / 2, y + height / 2);
+                }
+                
+                ctx.fillText(lines[i], canvas.width / 2, y + height / 2);
+            }
+            
+            // 绘制水印
+            const wmText = watermarkText.value.trim();
+            if (wmText) {
+                const wmSize = parseInt(watermarkSize.value);
+                const wmColor = watermarkColor.value;
+                const wmOpacity = parseInt(watermarkOpacity.value) / 100;
+                const wmPos = watermarkPosition.value;
+                
+                // 保存当前上下文状态
+                ctx.save();
+                
+                // 设置水印样式
+                ctx.font = `${wmSize}px Arial`;
+                ctx.fillStyle = wmColor;
+                ctx.globalAlpha = wmOpacity;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                // 计算水印位置
+                let x, y;
+                switch (wmPos) {
+                    case 'topLeft':
+                        x = wmSize * 2;
+                        y = wmSize * 2;
+                        ctx.textAlign = 'left';
+                        break;
+                    case 'topRight':
+                        x = canvas.width - wmSize * 2;
+                        y = wmSize * 2;
+                        ctx.textAlign = 'right';
+                        break;
+                    case 'bottomLeft':
+                        x = wmSize * 2;
+                        y = startY - wmSize * 2;
+                        ctx.textAlign = 'left';
+                        break;
+                    case 'bottomRight':
+                        x = canvas.width - wmSize * 2;
+                        y = startY - wmSize * 2;
+                        ctx.textAlign = 'right';
+                        break;
+                    case 'fullScreen':
+                        // 满屏水印模式
+                        ctx.textAlign = 'center';
+                        // 计算水印间距
+                        const spacingX = wmSize * 4;
+                        const spacingY = wmSize * 3;
+                        // 旋转水印文字
+                        ctx.save();
+                        ctx.rotate(Math.PI / 12); // 15度角
+                        
+                        // 计算需要绘制的行数和列数
+                        const cols = Math.ceil(canvas.width / spacingX) + 2;
+                        const rows = Math.ceil(canvas.height / spacingY) + 2;
+                        
+                        // 计算起始偏移，使水印覆盖整个画布
+                        const offsetX = -canvas.width / 2;
+                        const offsetY = -canvas.height / 2;
+                        
+                        // 绘制水印网格
+                        for (let row = 0; row < rows; row++) {
+                            for (let col = 0; col < cols; col++) {
+                                const posX = offsetX + col * spacingX;
+                                const posY = offsetY + row * spacingY;
+                                ctx.fillText(wmText, posX, posY);
+                            }
+                        }
+                        
+                        ctx.restore();
+                        // 已经绘制完满屏水印，直接返回
+                        ctx.restore();
+                        return;
+                    case 'center':
+                    default:
+                        x = canvas.width / 2;
+                        y = canvas.height / 2;
+                        break;
+                }
+                
+                // 绘制水印文本
+                ctx.fillText(wmText, x, y);
+                
+                // 恢复上下文状态
+                ctx.restore();
+            }
+            
+            // 显示预览
+            preview.src = canvas.toDataURL('image/png');
+            preview.style.display = 'block';
+        });
+        
+        // 保存图片
+        saveBtn.addEventListener('click', function() {
+            if (!preview.src || preview.src === window.location.href) {
+                alert('请先生成字幕图片');
+                return;
+            }
+            
+            // 创建下载链接
+            const link = document.createElement('a');
+            link.download = '字幕图片.png';
+            link.href = preview.src;
+            link.click();
+        });
+    </script>
+</body>
+</html>
